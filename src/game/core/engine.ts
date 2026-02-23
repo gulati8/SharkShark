@@ -10,12 +10,13 @@ const APEX_HIT_COOLDOWN_SECONDS = 0.45;
 const NPC_SIZE_CLASSES: FishSizeClass[] = [1, 2, 3, 4];
 
 const playerRadiusForSizeTier = (sizeTier: number) => {
+  // Derived from baked-in sprite sizes: visual half-width in arena px at ~85% coverage.
   switch (Math.max(1, Math.min(MAX_SIZE_TIER, Math.round(sizeTier)))) {
-    case 1: return 9;
-    case 2: return 12;
-    case 3: return 17;
-    case 4: return 22;
-    case 5: return 31;
+    case 1: return 19;
+    case 2: return 26;
+    case 3: return 37;
+    case 4: return 50;
+    case 5: return 47;
     default: return BASE_PLAYER_RADIUS;
   }
 };
@@ -53,12 +54,13 @@ const chaseSpeed = (kind: EntityKind, aggression = 1): number => {
 };
 
 const npcRadiusForSizeClass = (sizeClass: FishSizeClass) => {
+  // Derived from baked-in sprite sizes: visual half-width in arena px at ~85% coverage.
   switch (sizeClass) {
-    case 1: return rnd(7, 10);
-    case 2: return rnd(10, 14);
-    case 3: return rnd(14, 19);
-    case 4: return rnd(19, 25);
-    case 5: return rnd(26, 36);
+    case 1: return 19;
+    case 2: return 26;
+    case 3: return 37;
+    case 4: return 50;
+    case 5: return 68;
   }
 };
 
@@ -277,7 +279,6 @@ const spawnAtEdge = (state: GameState, kind: EntityKind): Entity => {
     entity.combat = {
       maxHealth,
       health: maxHealth,
-      tailWindowBias: rnd(0.52, 0.68),
       flashUntil: -1,
       lastHitAt: -999,
     };
@@ -356,48 +357,69 @@ const handlePlayerCollision = (state: GameState, entity: Entity): { consumed: bo
   }
 
   const invulnerable = state.run.timeSeconds < state.player.invulnerableUntil;
-  if (entity.kind === 'apex' && entity.combat) {
-    const dx = state.player.pos.x - entity.pos.x;
-    const apexFacingX = entity.vel.x === 0 ? 1 : Math.sign(entity.vel.x);
-    const behindApex = dx * apexFacingX < 0;
-    const tailBandWidth = entity.radius * (0.8 + entity.combat.tailWindowBias) * d.apexTailHitLeniency;
-    const nearTail = Math.abs(dx) >= tailBandWidth * 0.24;
-    const tailHitOpen = behindApex && nearTail;
-    const hitCooldownReady = state.run.timeSeconds - entity.combat.lastHitAt >= APEX_HIT_COOLDOWN_SECONDS;
 
-    if (tailHitOpen && hitCooldownReady) {
-      entity.combat.lastHitAt = state.run.timeSeconds;
-      entity.combat.flashUntil = state.run.timeSeconds + 0.18;
-      const damage = apexTailDamageForPlayer(state.player.sizeTier);
-      entity.combat.health -= damage;
-      const points = pointsForApexTailHit(d.scoreMultiplier);
-      state.run.score += points;
-      state.apexThreat.lastHitAt = state.run.timeSeconds;
-      const intensity = clamp(1 - entity.combat.health / entity.combat.maxHealth, 0, 1);
-      state.apexThreat.intensity = Math.max(state.apexThreat.intensity, intensity);
-      events.push({
-        type: 'apex-hit',
-        entityId: entity.id,
-        damage,
-        health: Math.max(entity.combat.health, 0),
-        maxHealth: entity.combat.maxHealth,
-        points,
-        pos: { ...entity.pos },
-      });
-      events.push({ type: 'score', amount: points });
-      events.push({ type: 'apex-intensity', value: state.apexThreat.intensity });
-      if (entity.combat.health <= 0) {
-        state.apexThreat.lastKillAt = state.run.timeSeconds;
-        state.apexThreat.intensity = 0;
-        const killBonus = points * 2;
-        state.run.score += killBonus;
-        events.push({ type: 'score', amount: killBonus });
-        events.push({ type: 'apex-killed', entityId: entity.id, points: killBonus, pos: { ...entity.pos } });
-        return { consumed: true, events };
+  // Apex collision uses two zones: front 70% hurts player, back 30% is where player damages apex.
+  if (entity.kind === 'apex' && entity.combat) {
+    const apexFacingX = entity.vel.x === 0 ? 1 : Math.sign(entity.vel.x);
+    // relativeX > 0 means player is in front of apex, < 0 means behind
+    const relativeX = (state.player.pos.x - entity.pos.x) * apexFacingX;
+    const ext = fishExtents(entity.radius, d.enemyHitboxScale);
+    // Split at 40% from the back: back 30% of total width = from -rx to -0.4*rx
+    const splitX = -0.4 * ext.rx;
+    const inTailZone = relativeX < splitX;
+
+    if (inTailZone) {
+      // Back 30%: player deals damage to apex
+      const hitCooldownReady = state.run.timeSeconds - entity.combat.lastHitAt >= APEX_HIT_COOLDOWN_SECONDS;
+      if (hitCooldownReady) {
+        entity.combat.lastHitAt = state.run.timeSeconds;
+        entity.combat.flashUntil = state.run.timeSeconds + 0.18;
+        const damage = apexTailDamageForPlayer(state.player.sizeTier);
+        entity.combat.health -= damage;
+        const points = pointsForApexTailHit(d.scoreMultiplier);
+        state.run.score += points;
+        state.apexThreat.lastHitAt = state.run.timeSeconds;
+        const intensity = clamp(1 - entity.combat.health / entity.combat.maxHealth, 0, 1);
+        state.apexThreat.intensity = Math.max(state.apexThreat.intensity, intensity);
+        events.push({
+          type: 'apex-hit',
+          entityId: entity.id,
+          damage,
+          health: Math.max(entity.combat.health, 0),
+          maxHealth: entity.combat.maxHealth,
+          points,
+          pos: { ...entity.pos },
+        });
+        events.push({ type: 'score', amount: points });
+        events.push({ type: 'apex-intensity', value: state.apexThreat.intensity });
+        if (entity.combat.health <= 0) {
+          state.apexThreat.lastKillAt = state.run.timeSeconds;
+          state.apexThreat.intensity = 0;
+          const killBonus = points * 2;
+          state.run.score += killBonus;
+          events.push({ type: 'score', amount: killBonus });
+          events.push({ type: 'apex-killed', entityId: entity.id, points: killBonus, pos: { ...entity.pos } });
+          return { consumed: true, events };
+        }
       }
       return { consumed: false, events };
     }
+
+    // Front 70%: apex damages player
+    if (!invulnerable) {
+      state.player.lives -= 1;
+      events.push({ type: 'player-hit', livesRemaining: state.player.lives });
+      if (state.player.lives <= 0) {
+        state.mode = 'gameOver';
+        events.push({ type: 'game-over', finalScore: state.run.score });
+      } else {
+        resetPlayerAfterHit(state);
+      }
+    }
+    return { consumed: false, events };
   }
+
+  // Regular fish collision
   const edible = canEat(state.player.sizeTier, entity);
 
   if (edible) {

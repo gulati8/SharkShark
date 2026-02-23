@@ -18,7 +18,6 @@ export type Entity = {
   combat?: {
     maxHealth: number;
     health: number;
-    tailWindowBias: number;
     flashUntil: number;
     lastHitAt: number;
   };
