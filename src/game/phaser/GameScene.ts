@@ -19,8 +19,8 @@ export type SceneBridge = {
 };
 
 export class GameScene extends Phaser.Scene {
-  private static readonly USE_APEX_HIT_SPRITE = true;
-  private static readonly USE_HAZARD_FRAME_B = true;
+  /** All fish/hazard sprites are displayed at this square size; visual size comes from baked-in art. */
+  private static readonly SPRITE_DISPLAY_SIZE = 200;
   private static readonly USE_BG_MID_IMAGE = true;
   private static readonly USE_BG_FORE_IMAGE = false;
   private static readonly USE_CAUSTICS_IMAGE = true;
@@ -57,20 +57,15 @@ export class GameScene extends Phaser.Scene {
 
   preload() {
     const { sprites } = this.theme;
-    // Future size-class/player evolution assets (safe to predeclare; missing files just won't be selected).
     for (const size of [1, 2, 3, 4, 5]) {
-      this.load.image(`player-s${size}-a`, `/assets/reef/player_s${size}_a.png`);
-      this.load.image(`player-s${size}-b`, `/assets/reef/player_s${size}_b.png`);
+      this.load.image(`player-s${size}`, `/assets/reef/player_s${size}_a.png`);
     }
     for (const size of [1, 2, 3, 4]) {
-      this.load.image(`npc-s${size}-v1-a`, `/assets/reef/npc_s${size}_v1_a.png`);
-      this.load.image(`npc-s${size}-v1-b`, `/assets/reef/npc_s${size}_v1_b.png`);
+      this.load.image(`npc-s${size}`, `/assets/reef/npc_s${size}_v1_a.png`);
     }
-    this.load.image('apex-s5-v1-a', '/assets/reef/apex_s5_v1_a.png');
-    this.load.image('apex-s5-v1-b', '/assets/reef/apex_s5_v1_b.png');
-    this.load.image('apex-s5-v1-hit', '/assets/reef/apex_s5_v1_hit.png');
-    this.load.image('hazard-v1-a', '/assets/reef/hazard_v1_a.png');
-    this.load.image('hazard-v1-b', '/assets/reef/hazard_v1_b.png');
+    this.load.image('apex-s5', '/assets/reef/apex_s5_v1_a.png');
+    this.load.image('apex-s5-hit', '/assets/reef/apex_s5_v1_hit.png');
+    this.load.image('hazard', '/assets/reef/hazard_v1_a.png');
     this.load.image('reef-bg-far', '/assets/reef/bg_far.png');
     this.load.image('reef-bg-mid', '/assets/reef/bg_mid.png');
     this.load.image('reef-bg-fore', '/assets/reef/bg_fore.png');
@@ -78,13 +73,10 @@ export class GameScene extends Phaser.Scene {
     this.load.image('reef-bg-fore-right', '/assets/reef/bg_fore_right.png');
     this.load.image('reef-caustics', '/assets/reef/caustics.png');
 
-    // Current hand-generated first batch / fallback assets
-    this.load.image('reef-player-a', '/assets/reef/player_swim_a.png');
-    this.load.image('reef-player-b', '/assets/reef/player_swim_b.png');
-    this.load.image('reef-prey-a', '/assets/reef/prey_01_a.png');
-    this.load.image('reef-prey-b', '/assets/reef/prey_01_b.png');
-    this.load.image('reef-apex-a', '/assets/reef/apex_01_a.png');
-    this.load.image('reef-apex-b', '/assets/reef/apex_01_b.png');
+    // Fallback assets
+    this.load.image('reef-player', '/assets/reef/player_swim_a.png');
+    this.load.image('reef-prey', '/assets/reef/prey_01_a.png');
+    this.load.image('reef-apex', '/assets/reef/apex_01_a.png');
     this.load.image('reef-apex-hit', '/assets/reef/apex_01_hit.png');
     this.load.svg('reef-predator', sprites.predator);
     this.load.svg('reef-hazard', sprites.hazard);
@@ -138,7 +130,7 @@ export class GameScene extends Phaser.Scene {
         // Multiply blend suppresses the matte while preserving darker coral/rock shapes.
         .setBlendMode(Phaser.BlendModes.MULTIPLY);
     }
-    this.playerSprite = this.add.image(0, 0, 'reef-player-a').setDepth(5);
+    this.playerSprite = this.add.image(0, 0, 'reef-player').setDepth(5);
     this.playerSprite.setOrigin(0.5);
     this.bubbles = Array.from({ length: 26 }, (_, i) => ({
       x: Phaser.Math.Between(0, 960),
@@ -314,17 +306,24 @@ export class GameScene extends Phaser.Scene {
 
       if (e.kind === 'apex' && e.combat) {
         const facingX = e.vel.x === 0 ? 1 : Math.sign(e.vel.x);
-        const tailBandWidth = e.radius * (0.8 + e.combat.tailWindowBias) * d.apexTailHitLeniency;
-        const tailThreshold = tailBandWidth * 0.24;
-        // Shark zones: red body = danger contact, yellow tail = player damage zone.
+        // Front/back zone split matching engine collision logic:
+        // splitX = -0.4 * ext.rx in apex-relative space → back 30% is tail zone
+        const splitWorldX = e.pos.x - facingX * 0.4 * ext.rx;
+        // Tail zone (back 30%) — yellow/green: player damages apex here
+        const tailEdgeX = e.pos.x - facingX * ext.rx;
+        const tailLeft = Math.min(splitWorldX, tailEdgeX);
+        const tailRight = Math.max(splitWorldX, tailEdgeX);
+        g.fillStyle(0x8bffd3, 0.18);
+        g.fillRect(tailLeft, e.pos.y - ext.ry, tailRight - tailLeft, ext.ry * 2);
+        // Front zone (front 70%) — red tint: apex damages player here
+        const frontEdgeX = e.pos.x + facingX * ext.rx;
+        const frontLeft = Math.min(splitWorldX, frontEdgeX);
+        const frontRight = Math.max(splitWorldX, frontEdgeX);
+        g.fillStyle(0xff6b6b, 0.14);
+        g.fillRect(frontLeft, e.pos.y - ext.ry, frontRight - frontLeft, ext.ry * 2);
+        // Split line
         g.lineStyle(2, 0xffe58f, 0.95);
-        g.lineBetween(e.pos.x, e.pos.y - 40, e.pos.x, e.pos.y + 40);
-        g.lineStyle(2, 0xffd38b, 0.9);
-        g.lineBetween(e.pos.x - facingX * tailThreshold, e.pos.y - 34, e.pos.x - facingX * tailThreshold, e.pos.y + 34);
-        const tailX = facingX > 0 ? e.pos.x - ext.rx : e.pos.x + tailThreshold;
-        const tailW = Math.max(1, ext.rx - tailThreshold);
-        g.fillStyle(0xffd38b, 0.22);
-        g.fillRect(tailX, e.pos.y - ext.ry, tailW, ext.ry * 2);
+        g.lineBetween(splitWorldX, e.pos.y - ext.ry, splitWorldX, e.pos.y + ext.ry);
       }
     }
   }
@@ -367,42 +366,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spriteKeyForEntity(entity: Entity) {
-    const swimFrameB = Math.floor(this.state.elapsedMs / 180) % 2 === 1;
     if (entity.kind === 'prey' || entity.kind === 'predator') {
       const size = entity.sizeClass ?? (entity.kind === 'prey' ? 1 : 3);
-      const frame = swimFrameB ? 'b' : 'a';
-      const preferred = `npc-s${size}-v1-${frame}`;
-      if (this.textures.exists(preferred)) return preferred;
-      if (size <= 2) return swimFrameB ? 'reef-prey-b' : 'reef-prey-a';
-      return 'reef-predator';
+      const key = `npc-s${size}`;
+      if (this.textures.exists(key)) return key;
+      return size <= 2 ? 'reef-prey' : 'reef-predator';
     }
     if (entity.kind === 'apex') {
       const flashing = !!(entity.combat && this.state.run.timeSeconds < entity.combat.flashUntil);
-      if (flashing && GameScene.USE_APEX_HIT_SPRITE && this.textures.exists('apex-s5-v1-hit')) return 'apex-s5-v1-hit';
-      const preferred = swimFrameB ? 'apex-s5-v1-b' : 'apex-s5-v1-a';
-      if (this.textures.exists(preferred)) return preferred;
-      if (flashing && GameScene.USE_APEX_HIT_SPRITE) return 'reef-apex-hit';
-      return swimFrameB ? 'reef-apex-b' : 'reef-apex-a';
+      if (flashing) {
+        if (this.textures.exists('apex-s5-hit')) return 'apex-s5-hit';
+        return 'reef-apex-hit';
+      }
+      if (this.textures.exists('apex-s5')) return 'apex-s5';
+      return 'reef-apex';
     }
-    if (GameScene.USE_HAZARD_FRAME_B) {
-      const hazardFrame = swimFrameB ? 'hazard-v1-b' : 'hazard-v1-a';
-      if (this.textures.exists(hazardFrame)) return hazardFrame;
-    } else if (this.textures.exists('hazard-v1-a')) {
-      return 'hazard-v1-a';
-    }
+    if (this.textures.exists('hazard')) return 'hazard';
     return 'reef-hazard';
-  }
-
-  private targetDisplayWidthForEntity(entity: Entity) {
-    if (entity.kind === 'prey' || entity.kind === 'predator') {
-      const size = entity.sizeClass ?? (entity.kind === 'prey' ? 1 : 3);
-      if (size === 1) return entity.radius * 5.6;
-      if (size === 2) return entity.radius * 5.7;
-      if (size === 3) return entity.radius * 5.8;
-      return entity.radius * 6.0;
-    }
-    if (entity.kind === 'apex') return entity.radius * 6.2;
-    return entity.radius * 3.4;
   }
 
   private syncEntitySprites() {
@@ -418,9 +398,9 @@ export class GameScene extends Phaser.Scene {
       } else if (sprite.texture.key !== textureKey) {
         sprite.setTexture(textureKey);
       }
-      const targetW = this.targetDisplayWidthForEntity(entity);
+      const ds = GameScene.SPRITE_DISPLAY_SIZE;
       sprite.setPosition(entity.pos.x, entity.pos.y);
-      sprite.setDisplaySize(targetW, targetW);
+      sprite.setDisplaySize(ds, ds);
       if (entity.kind !== 'hazard') {
         const facingLeft = entity.vel.x < 0;
         const facingSign = facingLeft ? -1 : 1;
@@ -449,16 +429,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private syncPlayerSprite(alpha: number) {
-    const frameB = Math.floor(this.state.elapsedMs / 170) % 2 === 1;
-    const playerVisualSize = Math.min(5, Math.max(1, this.state.player.sizeTier));
-    const preferred = `player-s${playerVisualSize}-${frameB ? 'b' : 'a'}`;
-    const textureKey = this.textures.exists(preferred) ? preferred : (frameB ? 'reef-player-b' : 'reef-player-a');
+    const tier = Math.min(5, Math.max(1, this.state.player.sizeTier));
+    const preferred = `player-s${tier}`;
+    const textureKey = this.textures.exists(preferred) ? preferred : 'reef-player';
     if (this.playerSprite.texture.key !== textureKey) this.playerSprite.setTexture(textureKey);
-    const size = Math.min(5, Math.max(1, this.state.player.sizeTier));
-    const sizeMult = size === 1 ? 5.6 : size === 2 ? 5.7 : size === 3 ? 5.8 : size === 4 ? 6.0 : 6.2;
-    const targetW = this.state.player.radius * sizeMult;
+    const ds = GameScene.SPRITE_DISPLAY_SIZE;
     this.playerSprite.setPosition(this.state.player.pos.x, this.state.player.pos.y);
-    this.playerSprite.setDisplaySize(targetW, targetW);
+    this.playerSprite.setDisplaySize(ds, ds);
     const facingLeft = this.state.player.vel.x < 0;
     const facingSign = facingLeft ? -1 : 1;
     this.playerSprite.setFlipX(facingLeft);
