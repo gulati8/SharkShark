@@ -1,0 +1,23 @@
+{
+  "name": "Reef Rush Prototype",
+  "short_name": "ReefRush",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#061622",
+  "theme_color": "#0c2133",
+  "orientation": "landscape",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
