@@ -1,0 +1,38 @@
+name: Deploy to S3 + CloudFront
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Sync hashed assets (long cache)
+        run: aws s3 sync dist/assets/ s3://reefrush-gulatilabs/assets/ --cache-control "max-age=31536000,immutable"
+
+      - name: Sync root files (no cache)
+        run: aws s3 sync dist/ s3://reefrush-gulatilabs/ --exclude "assets/*" --cache-control "no-cache" --delete
+
+      - name: Invalidate CloudFront cache
+        run: aws cloudfront create-invalidation --distribution-id EXRUTHBUEX0EK --paths "/*"
