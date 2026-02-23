@@ -30,6 +30,7 @@ export function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [toast, setToast] = useState<string>('');
   const [modeToast, setModeToast] = useState<string>('');
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const keyboardRef = useRef<KeyboardInput | null>(null);
   const joystickRef = useRef<VirtualJoystick | null>(null);
@@ -157,163 +158,141 @@ export function App() {
       onMouseDown={onAnyGesture}
       onTouchStart={onAnyGesture}
     >
-      <header className="top-bar">
-        <div>
-          <strong>Reef Rush Prototype</strong>
-          <span className="subtitle">Template-first continuous survival loop</span>
-        </div>
-        <div className="top-actions">
-          <label>
-            Mode
-            <select
-              value={selectedMode}
-              onChange={(e) => chooseMode(e.target.value as PlayModeKey)}
-            >
-              {Object.entries(modeLabels).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Difficulty
-            <select
-              value={difficulty}
-              onChange={(e) => setSaveData((prev) => ({ ...prev, selectedDifficulty: e.target.value as DifficultyKey }))}
-            >
-              {Object.values(difficulties).map((d) => (
-                <option key={d.key} value={d.key}>{d.label}</option>
-              ))}
-            </select>
-          </label>
-          <button type="button" onClick={requestPause}>Pause</button>
-        </div>
-      </header>
+      <section className="game-panel">
+        <GameCanvas
+          difficulty={difficulty}
+          settings={saveData.settings}
+          getInputState={getInputState}
+          shouldStartRun={() => startRunRef.current || !!keyboardRef.current?.consumeStartPressed()}
+          consumeStartRun={() => { startRunRef.current = false; }}
+          shouldRestartRun={() => restartRunRef.current || !!keyboardRef.current?.consumeStartPressed()}
+          consumeRestartRun={() => { restartRunRef.current = false; }}
+          shouldTogglePause={() => togglePauseRef.current}
+          consumeTogglePause={() => { togglePauseRef.current = false; }}
+          onState={setGameState}
+          onEvents={handleEvents}
+          onRunStarted={handleRunStarted}
+          onRunEnded={handleRunEnded}
+        />
 
-      <main className="play-layout">
-        <section className="game-panel">
-          <GameCanvas
-            difficulty={difficulty}
-            settings={saveData.settings}
-            getInputState={getInputState}
-            shouldStartRun={() => startRunRef.current || !!keyboardRef.current?.consumeStartPressed()}
-            consumeStartRun={() => { startRunRef.current = false; }}
-            shouldRestartRun={() => restartRunRef.current || !!keyboardRef.current?.consumeStartPressed()}
-            consumeRestartRun={() => { restartRunRef.current = false; }}
-            shouldTogglePause={() => togglePauseRef.current}
-            consumeTogglePause={() => { togglePauseRef.current = false; }}
-            onState={setGameState}
-            onEvents={handleEvents}
-            onRunStarted={handleRunStarted}
-            onRunEnded={handleRunEnded}
-          />
-
-          <div className="overlay-stack" aria-hidden="true">
-            {gameState?.mode === 'title' && (
-              <div className="center-card">
-                <h1>{selectedMode === 'arcade' ? 'Reef Rush' : `${modeLabels[selectedMode]} Preview`}</h1>
-                <p>
-                  {arcadeActive
-                    ? 'Eat smaller swimmers. Avoid larger predators. Grow every 1000 points.'
-                    : 'Mode framework is enabled. Arcade gameplay loop is active while campaign/challenges content is being authored.'}
-                </p>
-                <button type="button" onClick={requestStart}>Start Run</button>
-              </div>
-            )}
-            {gameState?.mode === 'paused' && (
-              <div className="center-card compact">
-                <h2>Paused</h2>
-                <button type="button" onClick={requestPause}>Resume</button>
-              </div>
-            )}
-            {gameState?.mode === 'gameOver' && (
-              <div className="center-card compact">
-                <h2>Game Over</h2>
-                <p>Score {gameState.run.score}</p>
-                <button type="button" onClick={requestRestart}>Retry</button>
-              </div>
-            )}
-          </div>
-
-          <div className="hud">
-            <div>Score: {gameState?.run.score ?? 0}</div>
-            <div>Lives: {gameState?.player.lives ?? difficulties[difficulty].startingLives}</div>
-            <div>Size: {gameState?.player.sizeTier ?? 1}</div>
-            <div>High: {saveData.highScores[difficulty]}</div>
-          </div>
-        </section>
-
-        <aside className="side-panel">
-          <section className="card">
-            <h3>Run Notes</h3>
-            <p>Original-inspired continuous loop with modernized difficulty profiles and template-friendly abstractions.</p>
-            <ul>
-              <li>Mode framework: Arcade / Campaign / Challenges</li>
-              <li>Touch joystick + keyboard</li>
-              <li>Difficulty changes AI, spawn, hitboxes, scoring</li>
-              <li>Local settings/high scores/stats/meta persistence</li>
-            </ul>
-          </section>
-
-          <section className="card">
-            <h3>Ad Placeholder</h3>
-            <div className="ad-slot">Menu / game-over interstitial hooks will attach here later</div>
-          </section>
-
-          <section className="card settings-card">
-            <h3>Settings</h3>
-            {([
-              ['soundEnabled', 'Sound'],
-              ['musicEnabled', 'Music'],
-              ['hapticsEnabled', 'Haptics'],
-              ['reducedMotion', 'Reduced Motion'],
-            ] as const).map(([key, label]) => (
-              <label key={key} className="toggle-row">
-                <input
-                  type="checkbox"
-                  checked={saveData.settings[key]}
-                  onChange={(e) => setSaveData((prev) => ({
-                    ...prev,
-                    settings: { ...prev.settings, [key]: e.target.checked },
-                  }))}
-                />
-                {label}
-              </label>
-            ))}
-            <label className="toggle-row">
-              Control Mode
-              <select
-                value={saveData.settings.controlMode}
-                onChange={(e) => setSaveData((prev) => ({
-                  ...prev,
-                  settings: { ...prev.settings, controlMode: e.target.value as SaveData['settings']['controlMode'] },
-                }))}
-              >
-                <option value="joystick">Virtual Joystick (MVP)</option>
-                <option value="drag" disabled>Drag-to-steer (planned)</option>
-              </select>
-            </label>
-          </section>
-
-          <section className="card">
-            <h3>Stats</h3>
-            <div className="stats-grid">
-              <span>Runs</span><strong>{saveData.stats.runsStarted}</strong>
-              <span>Deaths</span><strong>{saveData.stats.totalDeaths}</strong>
-              <span>Prey Eaten</span><strong>{saveData.stats.totalPreyEaten}</strong>
-              <span>Best Size</span><strong>{saveData.stats.bestSizeTier}</strong>
-              <span>Highest Milestone</span><strong>{saveData.meta.highestMilestone}k</strong>
+        <div className="overlay-stack" aria-hidden="true">
+          {gameState?.mode === 'title' && (
+            <div className="center-card">
+              <h1>{selectedMode === 'arcade' ? 'Reef Rush' : `${modeLabels[selectedMode]} Preview`}</h1>
+              <p>
+                {arcadeActive
+                  ? 'Eat smaller swimmers. Avoid larger predators. Grow every 1000 points.'
+                  : 'Mode framework is enabled. Arcade gameplay loop is active while campaign/challenges content is being authored.'}
+              </p>
+              <button type="button" onClick={requestStart}>Start Run</button>
             </div>
-          </section>
-        </aside>
-      </main>
+          )}
+          {gameState?.mode === 'paused' && (
+            <div className="center-card compact">
+              <h2>Paused</h2>
+              <button type="button" onClick={requestPause}>Resume</button>
+            </div>
+          )}
+          {gameState?.mode === 'gameOver' && (
+            <div className="center-card compact">
+              <h2>Game Over</h2>
+              <p>Score {gameState.run.score}</p>
+              <button type="button" onClick={requestRestart}>Retry</button>
+            </div>
+          )}
+        </div>
 
-      <div className="touch-joystick" data-joystick-surface="true">
+        <div className="hud">
+          <div>Score: {gameState?.run.score ?? 0}</div>
+          <div>Lives: {gameState?.player.lives ?? difficulties[difficulty].startingLives}</div>
+          <div>Size: {gameState?.player.sizeTier ?? 1}</div>
+          <div>High: {saveData.highScores[difficulty]}</div>
+        </div>
+
+        <div className="hud-actions">
+          {gameState?.mode === 'playing' && (
+            <button type="button" className="hud-btn" onClick={requestPause} aria-label="Pause">&#9646;&#9646;</button>
+          )}
+          <button type="button" className="hud-btn" onClick={() => setMenuOpen(true)} aria-label="Menu">&#9776;</button>
+        </div>
+      </section>
+
+      {menuOpen && (
+        <div className="menu-overlay" onClick={(e) => { if (e.target === e.currentTarget) setMenuOpen(false); }}>
+          <div className="menu-panel">
+            <div className="menu-header">
+              <h2>Menu</h2>
+              <button type="button" className="menu-close" onClick={() => setMenuOpen(false)}>&times;</button>
+            </div>
+
+            <div className="menu-section">
+              <label>
+                Mode
+                <select
+                  value={selectedMode}
+                  onChange={(e) => chooseMode(e.target.value as PlayModeKey)}
+                >
+                  {Object.entries(modeLabels).map(([key, label]) => (
+                    <option key={key} value={key}>{label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Difficulty
+                <select
+                  value={difficulty}
+                  onChange={(e) => setSaveData((prev) => ({ ...prev, selectedDifficulty: e.target.value as DifficultyKey }))}
+                >
+                  {Object.values(difficulties).map((d) => (
+                    <option key={d.key} value={d.key}>{d.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="menu-section">
+              <h3>Settings</h3>
+              {([
+                ['soundEnabled', 'Sound'],
+                ['musicEnabled', 'Music'],
+                ['hapticsEnabled', 'Haptics'],
+                ['reducedMotion', 'Reduced Motion'],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="toggle-row">
+                  <span>{label}</span>
+                  <input
+                    type="checkbox"
+                    checked={saveData.settings[key]}
+                    onChange={(e) => setSaveData((prev) => ({
+                      ...prev,
+                      settings: { ...prev.settings, [key]: e.target.checked },
+                    }))}
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div className="menu-section">
+              <h3>Stats</h3>
+              <div className="stats-grid">
+                <span>Runs</span><strong>{saveData.stats.runsStarted}</strong>
+                <span>Deaths</span><strong>{saveData.stats.totalDeaths}</strong>
+                <span>Prey Eaten</span><strong>{saveData.stats.totalPreyEaten}</strong>
+                <span>Best Size</span><strong>{saveData.stats.bestSizeTier}</strong>
+                <span>Highest Milestone</span><strong>{saveData.meta.highestMilestone}k</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="touch-joystick">
         {(() => {
           const snap = joystickRef.current?.snapshot();
-          if (!snap?.active) return <div className="joystick-hint">Touch and hold left side to steer</div>;
+          if (!snap?.active) return null;
           return (
             <>
-              <div className="joystick-base" style={{ left: snap.center.x, top: snap.center.y, width: snap.radius * 2, height: snap.radius * 2 }} />
+              <div className="joystick-anchor" style={{ left: snap.center.x, top: snap.center.y }} />
               <div className="joystick-knob" style={{ left: snap.knob.x, top: snap.knob.y }} />
             </>
           );
