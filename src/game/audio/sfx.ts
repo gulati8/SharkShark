@@ -24,9 +24,18 @@ export class SfxEngine {
   unlock = async () => {
     const ctx = this.ensureContext();
     if (!ctx) return;
-    if (ctx.state === 'suspended') await ctx.resume();
-    this.unlocked = ctx.state === 'running';
-    if (this.unlocked && this.ambientActive) this.scheduleAmbient();
+    if (ctx.state === 'suspended') {
+      try { await ctx.resume(); } catch { /* ignore */ }
+    }
+    if (ctx.state === 'running' && !this.unlocked) {
+      this.unlocked = true;
+      // Audio state may have been set before unlock completed — apply it now.
+      if (this.masterGain) {
+        const target = this.ambientActive ? 0.85 : 0.0001;
+        this.masterGain.gain.setTargetAtTime(target, ctx.currentTime, 0.03);
+      }
+      if (this.ambientActive) this.scheduleAmbient();
+    }
   };
 
   updateThreatIntensity(value: number, enabled: boolean) {
