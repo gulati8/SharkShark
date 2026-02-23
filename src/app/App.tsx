@@ -92,8 +92,11 @@ export function App() {
   };
 
   const joystick = joystickRef.current;
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => joystick.onPointerDown(e.nativeEvent);
-  const onAnyGesture = () => { void sfxRef.current?.unlock(); };
+  const unlockAudio = () => { void sfxRef.current?.unlock(); };
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    unlockAudio();
+    joystick.onPointerDown(e.nativeEvent);
+  };
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => joystick.onPointerMove(e.nativeEvent);
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => joystick.onPointerUp(e.nativeEvent);
 
@@ -155,8 +158,6 @@ export function App() {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      onMouseDown={onAnyGesture}
-      onTouchStart={onAnyGesture}
     >
       <section className="game-panel">
         <GameCanvas
